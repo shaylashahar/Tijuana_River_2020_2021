@@ -1,1 +1,155 @@
-#
+---
+title: "TJ Year 2 R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r}
+library(zCompositions)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(vegan)
+library(scales)
+library(ggthemes)
+require(gtools)
+library(viridis)
+library(data.table)
+```
+```{r}
+# read in OTU table and mapping file
+OTU <- read.csv('./TJ_metagenomemodified.csv',sep=',',row.names = 1,header = 1,check.names=FALSE)
+OTU
+map <- read.csv('./Metagenomics_SampleSiteDate.csv',sep=',',header =1,row.names = 1)
+```
+```{r}
+#Check for number of 0s in sample
+table(OTU == 0)
+```
+```{r}
+#replace 0s with p-counts
+metagen_z <- cmultRepl((OTU), output = 'p-counts')
+```
+```{r}
+#Check to see if 0s have been removed
+table(metagen_z == 0)
+```
+```{r}
+#Transpose for clr
+metagen_z_t <- t(metagen_z)
+```
+```{r}
+#define clr function
+clr <- function(x) sweep(log(x), 1, rowMeans(log(x)), "-")
+```
+```{r}
+#Perform clr
+metagen_clr_t <- clr(metagen_z_t)
+```
+```{r}
+#transpose back
+metagen_clr <- t(metagen_clr_t)
+```
+```{r}
+#Remove missing sample from mapping file 
+map_filtered <- map[-c(11),]
+```
+```{r}
+#Transpose data
+metagen_clr_filtered_t <- t(metagen_clr_filtered)
+```
+```{r}
+#Make matrix FOR NMDS
+metagen_clr_m <- as.matrix(metagen_clr_filtered_t)
+```
+```{r}
+#Make NMDS data
+metagen_nmds = metaMDS(metagen_clr_m, distance = 'euclidean')
+```
+```{r}
+#Extract NMDS data
+metagen_scores = as.data.frame(scores(metagen_nmds))
+```
+```{r}
+#Add mapping file columns to NMDS data
+metagen_scores$date = as.factor(map_ordered$Date.of.sampling)
+metagen_scores$number = as.factor(map_ordered$Number)
+metagen_scores$site = as.factor(map_ordered$Site)
+```
+```{r}
+metagen_scores$date <- factor(metagen_scores$date, (labels=c('08/2020', '11/2020', '12/2020', '01/2021', '03/2021', '04/2021', '05/2021')))
+#plot NMDS adjust aes according to data
+metagen_nmdsplot <- ggplot(metagen_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 4, aes(colour = date, shape = site), stroke = 2) +
+  ggtitle('Metagenomic NMDS')+ scale_shape_manual(values=c(20, 2)) +
+  theme(
+    plot.title = element_text(color="black", size=10, face="bold"),
+    panel.background = element_rect(fill = "white",
+                                    colour = "black",
+                                    size = 0.5, linetype = "solid"),
+  )
+metagen_nmdsplot
+#to add numbers 
+#+ geom_text(data = metagen_scores,aes(x=NMDS1,y=NMDS2,label=number),size=2,vjust=2)
+```
+
+```{r}
+#saves plot as png
+#ggsave('./NMDS_Plot_TJY2.png', width=6.5, height=4,plot=metagen_nmdsplot)
+```
+```{r}
+#Vegdist
+metag_dist<-vegdist(metagen_clr_filtered_t, method='euclidian')
+```
+```{r}
+#adonis
+metag_site <- adonis2(metag_dist~Site, data=map_ordered, permutations = 9999, method = "euclidian")
+metag_site
+metag_date <- adonis2(metag_dist~Date.of.sampling, data=map_ordered, permutations = 9999, method = "euclidian")
+metag_date
+metag_number <- adonis2(metag_dist~Number, data=map_ordered, permutations = 9999, method = "euclidian")
+metag_number
+```
+```{r}
+#saving adonis 
+capture.output(metag_site,file="./TJ_River_site_permanova_10000.csv")
+capture.output(metag_date,file="./TJ_River_date_permanova_10000.csv")
+capture.output(metag_number,file="./TJ_River_number_permanova_10000.csv")
+```
+```{r}
+#SKIPPED
+site_metagen <- factor(map_ordered[colnames(metagen_clr_filtered),]$Site)
+date_metagen <- factor(map_ordered[colnames(metagen_clr_filtered),]$Date.of.sampling)
+number_metagen <- factor(map_ordered[colnames(metagen_clr_filtered),]$Number)
+```
+```{r}
+metagbeta_clr_site <- betadisper(metag_dist, site_metagen)
+metagbetadispr_site <- permutest(metagbeta_clr_site)
+metagdistances_site <- data.frame(metagbeta_clr_site[['distances']])
+metagdistances_site <- cbind (metagdistances_site, site_metagen)
+colnames(metagdistances_site) <- c('Distance_to_Centroid', 'site')
+```
+```{r}
+metagbeta_clr_date <- betadisper(metag_dist, date_metagen)
+metagbetadispr_date <- permutest(metagbeta_clr_date)
+metagdistances_date <- data.frame(metagbeta_clr_date[['distances']])
+metagdistances_date <- cbind (metagdistances_date, date_metagen)
+colnames(metagdistances_date) <- c('Distance_to_Centroid', 'date')
+```
+```{r}
+metagdistances_site
+kruskal.test(Distance_to_Centroid ~ site, data = metagdistances_site)
+my_comparisons <- list(c("Radio Club", "Boca Rio"))
+dist <- ggplot(metagdistances_site, mapping = aes(x=factor(site, level=c('Radio Club', 'Boca Rio')), y = Distance_to_Centroid)) +
+  geom_boxplot(lwd=1.0)+ geom_point(size = 4, alpha = 0.5) + 
+  theme_bw() + labs(x="Site", y="Distance to Centroid") + theme(axis.text.x=element_text(size=15)) + theme(axis.text.y =element_text(size=15)) + theme(axis.title.y =element_text(size=15)) + theme(axis.title.x =element_text(size=15)) + theme(axis.text = element_text(face="bold"), axis.title = element_text(face="bold")) + stat_compare_means(comparisons = my_comparisons) 
+dist
+#ggsave('./dist_box_site.png',width=8, height=8, plot = dist)
+```
+
+
+
+
+
+
+
