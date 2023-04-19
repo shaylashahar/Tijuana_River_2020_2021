@@ -1,0 +1,67 @@
+---
+title: "NMDS of all source metagenomes"
+output: html_document
+date: "2023-04-19"
+---
+---
+title: "ST_NMDS"
+output: html_document
+---
+```{r}
+library("vegan")
+library("zCompositions")
+library("ggplot2")
+library("ggpubr")
+library("corrplot")
+library("psych")
+
+```
+```{r}
+##read in otu 
+map=read.csv("../nr_OTU/map.csv", header = TRUE, row.names = 1)
+all=read.csv("../nr_OTU/ALL.csv", header = TRUE, row.names = 1)
+```
+```{r}
+#replace zeros
+all[all == 0] <- 0.001
+```
+```{r}
+clr <- function(x) sweep(log(x), 1, rowMeans(log(x)), "-")
+```
+```{r}
+all_tx <- data.frame(t(clr(t(all))))
+```
+```{r}
+all_m <- as.matrix(t(all_tx))
+```
+```{r}
+all_nmds = metaMDS(all_m, distance = "euclidean")
+```
+```{r}
+all_scores = as.data.frame(scores(all_nmds))
+```
+```{r}
+all_scores$Sample <- map$Sample
+all_scores$Site <- map$Site
+all_scores$Number <- map$Number
+
+```
+```{r}
+all_nmdsplot <- ggplot(all_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 3, aes(colour = Site))+ 
+ scale_color_manual(values = c("#19A52F", "#B31212", "#68E9E4", "#10A9E3", "#432E19", "#A9810F"))+
+  ggtitle('Sourcetracker Metagenomes')+
+  theme(
+    plot.title = element_text(color="black", size=10, face="bold"),
+    panel.background = element_rect(fill = "white",
+                                    colour = "black",
+                                    size = 0.5, linetype = "solid"),
+  )
+all_nmdsplot
+#ggsave('./all_NMDS.png', width=6.5, height=4,plot=all_nmdsplot)
+#to add numbers:
+# geom_text(data = all_scores,aes(x=NMDS1,y=NMDS2,label=Number),size=2,vjust=2)+
+```
+
+
+
